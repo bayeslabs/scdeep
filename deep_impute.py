@@ -81,9 +81,13 @@ class DeepImputeTrainer(Trainer):
         self.min_vmr = min_vmr
         self.subset_dim = subset_dim
 
-        self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.toarray(), dtype='float32')
+        if not type(self.gene_dataset.data) == np.ndarray:
+            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.toarray(), dtype='float32')
+        else:
+            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data, dtype='float32')
         # (note: below operations are carried out on data assuming it is a pandas dataframe)
         genes_vmr = (self.gene_dataset.data.var() / (1 + self.gene_dataset.data.mean())).sort_values(ascending=False)
+        genes_vmr = genes_vmr[genes_vmr > 0]
 
         # In case 1, while filling genes, we repeat genes that have been previously selected
         # but do not choose genes that have a VMR < 0.5
@@ -97,7 +101,7 @@ class DeepImputeTrainer(Trainer):
                 fill_genes = genes_to_impute[:number_fill]
                 genes_to_impute = np.concatenate((genes_to_impute, fill_genes))
 
-        self.corr_matrix = self.correlation_matrix(genes_to_impute, number_predictor)
+        self.corr_matrix = self.correlation_matrix(self.gene_dataset.data, number_predictor)
 
         # the  next two functions save the INDICES of genes that are to form the predictors and targets
         self.set_targets(self.gene_dataset.data.reindex(columns=genes_to_impute), mode)
@@ -138,11 +142,10 @@ class DeepImputeTrainer(Trainer):
             l.backward(retain_graph=True)
         self.optimizer.step()
 
-    def correlation_matrix(self, genes_to_impute, number_predictor=None):
+    def correlation_matrix(self, data, number_predictor=None):
 
         # we find CV to find one value per gene to calculate the correlation between two genes
-        data = pd.DataFrame(self.gene_dataset.data, columns=genes_to_impute)
-        data = data.loc[:, ~data.columns.duplicated()]
+        # data = data.loc[:, ~data.columns.duplicated()]
         cv = data.std() / data.mean()
         cv[np.isinf(cv)] = 0
         if number_predictor is None:
@@ -164,7 +167,7 @@ class DeepImputeTrainer(Trainer):
 
         rest = self.subset_dim - (len(genes_to_impute) % self.subset_dim)
         if rest > 0:
-            fill_genes = np.random.choice(genes_to_impute, rest)
+            fill_genes = np.random.choice(genes.index, rest)
             genes_to_impute = np.concatenate((genes_to_impute, fill_genes))
         # genes_to_impute contains the indices of genes that should be included for imputation
         return genes_to_impute
@@ -175,17 +178,19 @@ class DeepImputeTrainer(Trainer):
         if mode == 'progressive':
             self.targets = data.columns.values.reshape((number_subsets, self.subset_dim))
         else:
-            self.targets = np.random.choice(data.columns, size=(number_subsets, self.subset_dim))
-        self.targets = list(self.targets)
+            self.targets = np.random.choice(data.columns, size=(number_subsets, self.subset_dim), replace=False)
+        #self.targets = list(self.targets)
 
     def set_predictors(self, covariance_matrix, n_top_correlated_genes):
         self.predictors = []
         for i, target in enumerate(self.targets):
-            predictor = covariance_matrix.loc[target].drop(target, axis=1)
+            predictor = covariance_matrix.loc[target].drop(np.intersect1d(target, covariance_matrix.columns), axis=1)
             sorted_args = np.argsort(-predictor.values, axis=1)[:, :n_top_correlated_genes]
-            predictor = predictor.columns[sorted_args].values.flatten()
+            predictor = predictor.columns[sorted_args.flatten()]
 
             self.predictors.append(np.unique(predictor))
+
+            print("Network {}: {} predictors, {} targets".format(i, len(np.unique(predictor)), len(target)))
 
     def get_probs(self, vec, distr):
         return {
@@ -233,9 +238,9 @@ class DeepImputeTrainer(Trainer):
 
         predicted = self.model(inp)
 
-        predicted = pd.DataFrame(predicted.detach().numpy())
+        predicted = pd.DataFrame(predicted.detach().numpy(), index=data.index, columns=self.targets.flatten())
         predicted = predicted.groupby(by=predicted.columns, axis=1).mean()
-        not_predicted = data.drop(columns=predicted.columns)
+        not_predicted = data.drop(columns=self.targets.flatten())
         imputed = pd.concat([predicted, not_predicted], axis=1).loc[data.index, data.columns].values
 
         if policy == "restore":
