@@ -23,17 +23,15 @@ from dataset import GeneExpressionDataset
 
 
 class SubModule(nn.Module):
-    def __init__(self, input_dim, output_dim = 512):
+    def __init__(self, input_dim, output_dim=512):
         super(SubModule, self).__init__()
         self.dense_layer = nn.Linear(input_dim, 256)
         self.dropout = nn.Dropout(0.2)
-        self.layer2 = nn.Linear(256,256)
         self.output_layer = nn.Linear(256, output_dim)
 
     def forward(self, x):
         x = F.relu(self.dense_layer(x))
         x = self.dropout(x)
-        x = self.layer2(x)
         x = F.softplus(self.output_layer(x))
         return x
 
@@ -117,7 +115,8 @@ class DeepImputeTrainer(Trainer):
     def loss(self, y_pred, y_true):
         l = []
         for i, ytrue in enumerate(y_true):
-            y = (ytrue * ((ytrue - y_pred[i]) * (ytrue - y_pred[i])))
+            a = ytrue - y_pred[i]
+            y = (ytrue * torch.mul(a, a))
             l.append(y.mean())
         return l
 
@@ -263,9 +262,7 @@ class DeepImputeTrainer(Trainer):
         return score
 
     def metric_score(self, a, b):
-        score = np.sqrt(np.square(a - b))
-        score = np.average(score)
-        return score
+        return scipy.stats.pearsonr(a.reshape(-1), b.reshape(-1))[0]
 
 
 
