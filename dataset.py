@@ -1,10 +1,12 @@
+# The structure of the dataset, posterior and trainer classes are based on the structures used in ScVI
+# The implementation of ScVI by YosefLab is available on GitHub
+
 import numpy as np
 import pandas as pd
 import scipy.sparse
-import torch
 from torch.utils.data import Dataset
 
-from typing import Union, Dict, Callable, Iterable, List
+from typing import Union, Dict, List
 from collections import OrderedDict, defaultdict
 import logging
 

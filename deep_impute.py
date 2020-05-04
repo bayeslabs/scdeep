@@ -1,3 +1,5 @@
+# DeepImpute implementation in PyTorch
+
 import numpy as np
 import pandas as pd
 import scipy.sparse
@@ -14,9 +16,6 @@ import matplotlib.pyplot as plt
 import itertools
 from collections.abc import Iterable
 from typing import Union, Iterable
-
-import os
-import logging
 
 from trainer import Trainer
 from dataset import GeneExpressionDataset
@@ -166,7 +165,7 @@ class DeepImputeTrainer(Trainer):
         genes_to_impute = genes.index[:number_subsets * self.subset_dim]
 
         rest = self.subset_dim - (len(genes_to_impute) % self.subset_dim)
-        if rest > 0:
+        if rest > 0 and rest != self.subset_dim:
             fill_genes = np.random.choice(genes.index, rest)
             genes_to_impute = np.concatenate((genes_to_impute, fill_genes))
         # genes_to_impute contains the indices of genes that should be included for imputation

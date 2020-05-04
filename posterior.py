@@ -1,16 +1,13 @@
-import os
+# The structure of the dataset, posterior and trainer classes are based on the structures used in ScVI
+# The implementation of ScVI by YosefLab is available on GitHub
+
 import logging
 import numpy as np
 import pandas as pd
 import copy
 
-import torch
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
-from typing import List
 from dataset import GeneExpressionDataset
-
-
-from collections import OrderedDict, defaultdict
 
 logger = logging.getLogger(__name__)
 
