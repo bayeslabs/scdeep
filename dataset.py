@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 from torch.utils.data import Dataset
+import scanpy
 
 from typing import Union, Dict, List
 from collections import OrderedDict, defaultdict
@@ -46,7 +47,7 @@ class GeneExpressionDataset(Dataset):
                 ):
         # todo write description of parameters
 
-        data = data.T
+        # data = data.T
         self._data = (
             np.ascontiguousarray(data, dtype=np.float32)
             if isinstance(data, np.ndarray)
@@ -147,7 +148,7 @@ class GeneExpressionDataset(Dataset):
         return self.nb_cells
 
     def __getitem__(self, item):
-        return self.data[item, :]
+        return item
 
     @property
     def data(self):
@@ -173,12 +174,16 @@ class GeneExpressionDataset(Dataset):
         return self.data.shape[1]
 
     @property
+    def nb_cell_counts(self) -> np.ndarray:
+        return np.sum(self.data, axis=1)
+
+    @property
     def batch_indices(self) -> np.ndarray:
         return self._batch_indices
 
     @batch_indices.setter
     def batch_indices(self, batch_indices: Union[List[int], np.ndarray]):
-        batch_indices = np.asarray(batch_indices, dtype=np.int32).reshape(-1, 1)
+        batch_indices = np.asarray(batch_indices, dtype=np.int32).reshape((-1, 1))
         self.num_batches = len(np.unique(batch_indices))
         self._batch_indices = batch_indices
 
@@ -191,3 +196,39 @@ class GeneExpressionDataset(Dataset):
         labels = np.asarray(labels, dtype=np.int32)
         self.num_labels = len(np.unique(labels))
         self._labels = labels
+
+
+def normalize(
+        dataset: GeneExpressionDataset,
+        filter_min_counts=None,
+        size_factors=False,
+        scale_input=False,
+        logtrans_input=False
+):
+    adata = scanpy.AnnData(dataset.data)
+
+    if filter_min_counts:
+        scanpy.pp.filter_genes(adata, min_counts=filter_min_counts)
+        scanpy.pp.filter_cells(adata, min_counts=filter_min_counts)
+    if size_factors:
+        scanpy.pp.normalize_per_cell(adata)
+        size_factor_cell = dataset.nb_cell_counts / np.median(dataset.nb_cell_counts)
+        dataset.initialize_cell_attribute("size_factor", size_factor_cell.reshape((-1,1)))
+    if logtrans_input:
+        scanpy.pp.log1p(adata)
+    if scale_input:
+        scanpy.pp.scale(adata)
+    dataset.data = adata.X
+    return dataset
+
+
+
+class GeneExpressionDatasetWithBatches(GeneExpressionDataset):
+
+    def __init__(self):
+        super(GeneExpressionDatasetWithBatches, self).__init__()
+
+    def __getitem__(self, item):
+        return self.data[item, :], self.batch_indices[item, :]
+
+

@@ -4,6 +4,7 @@
 import logging
 import numpy as np
 import pandas as pd
+import torch
 import copy
 
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
@@ -33,7 +34,7 @@ class Posterior:
             self.sampler = None
 
         self.data_loader_kwargs = copy.deepcopy(data_loader_kwargs)
-        self.data_loader_kwargs.update({"shuffle": (self.sampler is None), "sampler": self.sampler})
+        self.data_loader_kwargs.update({"shuffle": (not self.sampler is None), "sampler": self.sampler})
         self.data_loader = DataLoader(gene_dataset, **data_loader_kwargs)
 
     @property
@@ -56,10 +57,10 @@ class Posterior:
         return self.num_cells
 
     def __iter__(self):
-        return map(self.to_cuda, iter(self.data_loader))
+        return map(self.to_cuda, [(torch.tensor(self.gene_dataset.data[i,:]),i) for i in iter(self.data_loader)])
 
-    def to_cuda(self, tensors):
-        return tensors.cuda() if self.use_cuda else tensors
+    def to_cuda(self, t):
+        return t[0].cuda() if self.use_cuda else t[0], t[1]
 
 
 

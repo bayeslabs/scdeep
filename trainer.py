@@ -17,7 +17,7 @@ from dataset import GeneExpressionDataset
 
 logger = logging.getLogger(__name__)
 
-
+# todo change the train size and test size functions and add a predict function instead and a test function
 class Trainer:
     default_metrics_to_monitor = []
 
@@ -28,7 +28,7 @@ class Trainer:
             use_cuda: bool = True,
             metrics_to_monitor: List = None,
             frequency_stats: int = None,
-            weight_decay: float = 1e-6,
+            weight_decay: float = None,
             data_loader_kwargs: dict = None,
             show_progressbar: bool = True,
             batch_size: int = 128,
@@ -115,6 +115,7 @@ class Trainer:
         self.on_training_end()
 
     def on_training_loop(self, data_tensors):
+        data_tensors = self.model(data_tensors)
         self.current_loss = loss = self.loss(data_tensors)
         self.optimizer.zero_grad()
         loss.backward()
@@ -138,7 +139,7 @@ class Trainer:
 
     def on_iteration_end(self):
         self.check_training_status()
-        print("Iteration: {} Loss: {:.4f}".format(self.num_iter, self.current_loss))
+        print("Iteration: {} Loss: {:.4f}".format(self.num_iter, self.current_loss.item()))
         self.num_iter += 1
 
     def on_epoch_end(self):
@@ -176,7 +177,7 @@ class Trainer:
         model = self.model if model is None and hasattr(self, "model") else model
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
 
-        n = len(gene_dataset)
+        n = len(self.gene_dataset)
 
         if shuffle:
             indices = np.random.permutation(n)
@@ -215,10 +216,10 @@ class Trainer:
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
 
         return type_class(
-            model,
-            gene_dataset,
+            self.model,
+            self.gene_dataset,
             shuffle=shuffle,
-            indices = indices,
+            indices=indices,
             use_cuda=self.use_cuda,
             data_loader_kwargs=self.data_loader_kwargs
         )
