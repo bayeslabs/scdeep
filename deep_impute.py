@@ -80,8 +80,8 @@ class DeepImputeTrainer(Trainer):
         self.min_vmr = min_vmr
         self.subset_dim = subset_dim
 
-        if not type(self.gene_dataset.data) == np.ndarray:
-            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.toarray(), dtype='float32')
+        if not type(self.gene_dataset.data) == Union[np.ndarray,scipy.sparse.csr_matrix]:
+            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.values, dtype='float32')
         else:
             self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data, dtype='float32')
         # (note: below operations are carried out on data assuming it is a pandas dataframe)
@@ -108,11 +108,10 @@ class DeepImputeTrainer(Trainer):
 
         # todo check if the normalization of data matrix happens over all columns(genes) or only those with vmr > 0.5
 
-        self.gene_dataset.data = np.log1p(self.gene_dataset.data).astype(np.float32)
-        self.gene_dataset.data = torch.tensor(self.gene_dataset.data.values)
+        self.gene_dataset.data = np.log1p(self.gene_dataset.data.values).astype(np.float32)
+        # self.gene_dataset.data = torch.tensor(self.gene_dataset.data.values)
 
-        (train_set, test_set, val_set) = self.train_test_validation(model, gene_dataset,
-                                                                    train_size=train_size, test_size=test_size)
+        (train_set, test_set, val_set) = self.train_test_validation(train_size=train_size, test_size=test_size)
         self.register_posterior(train_set, test_set, val_set)
 
     def loss(self, y_pred, y_true):
@@ -129,6 +128,7 @@ class DeepImputeTrainer(Trainer):
         self.optimizer = optim.Adam(itertools.chain(*params), lr=self.lr)
 
     def on_training_loop(self, data_tensors):
+        data_tensors, indices = data_tensors
         inp = [data_tensors[:, column] for column in self.predictors]
         # inp = torch.split(data_tensors, [len(i) for i in self.predictors], dim=1)
         output = self.model(inp)
@@ -178,7 +178,7 @@ class DeepImputeTrainer(Trainer):
             self.targets = data.columns.values.reshape((number_subsets, self.subset_dim))
         else:
             self.targets = np.random.choice(data.columns, size=(number_subsets, self.subset_dim), replace=False)
-        #self.targets = list(self.targets)
+        # self.targets = list(self.targets)
 
     def set_predictors(self, covariance_matrix, n_top_correlated_genes):
         self.predictors = []
@@ -197,14 +197,11 @@ class DeepImputeTrainer(Trainer):
             "uniform": np.tile([1. / len(vec)], len(vec)),
         }.get(distr)
 
-    def mask_data(self, test_size, distr="exp", dropout=0.01):
+    def mask_data(self, data_to_mask, test_size, distr="exp", dropout=0.01):
         np.random.seed(self.seed)
-        data_to_mask = torch.ones(self.gene_dataset.data.shape)
-        data_to_mask = data_to_mask.new_tensor(self.gene_dataset.data)
-        data_to_mask = data_to_mask.detach().numpy()
 
-        permuted_indices = np.random.permutation(len(self.gene_dataset))
-        test_set = int(np.ceil(len(self.gene_dataset) * test_size))
+        permuted_indices = np.random.permutation(data_to_mask.shape[0])
+        test_set = int(np.ceil(data_to_mask.shape[0] * test_size))
         test_indices = np.array(permuted_indices[:test_set])
 
         data_to_mask = data_to_mask[test_indices, :]
@@ -232,7 +229,7 @@ class DeepImputeTrainer(Trainer):
     def predict(self, data, return_imputed_only=False, policy="restore"):
 
         data_tensor = torch.tensor(data.values)
-        print(data_tensor.shape)
+
         inp = [data_tensor[:, column] for column in self.predictors]
 
         predicted = self.model(inp)
@@ -248,12 +245,12 @@ class DeepImputeTrainer(Trainer):
         elif policy == "max":
             not_replaced_values = (data > imputed.values)
             imputed[not_replaced_values] = data.values[not_replaced_values]
-        print("HUA?")
+
         return predicted
 
-    def model_score(self, test_size=0.2):
+    def model_score(self, data, test_size=0.2):
 
-        data, masked_dataset, row_indices = self.mask_data(test_size)
+        data, masked_dataset, row_indices = self.mask_data(data, test_size=test_size)
         data = pd.DataFrame(data, index=row_indices)
         masked_dataset = pd.DataFrame(masked_dataset, index=row_indices)
 
