@@ -5,6 +5,7 @@ import logging
 import time
 from typing import Union, List
 from collections import OrderedDict
+import os
 
 import numpy as np
 import pandas as pd
@@ -18,6 +19,7 @@ from dataset import GeneExpressionDataset
 logger = logging.getLogger(__name__)
 
 # todo change the train size and test size functions and add a predict function instead and a test function
+
 class Trainer:
     default_metrics_to_monitor = []
 
@@ -32,8 +34,12 @@ class Trainer:
             data_loader_kwargs: dict = None,
             show_progressbar: bool = True,
             batch_size: int = 128,
+            train_size: Union[int, float] = 0.8,
+            test_size: Union[int, float] = None,
+            shuffle: bool = True,
             seed: int = 0,
-            max_nans: int = 15
+            max_nans: int = 15,
+            output_dir=None
     ):
 
         # model and dataset
@@ -66,6 +72,11 @@ class Trainer:
         self.was_previous_loss_nan = False
         self.nan_count = 0
 
+        self.output_dir = output_dir
+        self.train_size = train_size
+        self.test_size = test_size
+        self.shuffle = shuffle
+        self.frequency_stats = 1 if frequency_stats is None else frequency_stats
         # todo metrics and early stopping
 
         self.show_progressbar = show_progressbar
@@ -75,11 +86,6 @@ class Trainer:
 
         begin = time.time()
         self.model.train()
-
-        # if params is None:
-        #     params = filter(lambda p: p.requires_grad, self.model.parameters())
-        #
-        # self.optimizer = torch.optim.Adam(params, lr=lr, weight_decay=self.weight_decay)
 
         # initialization of other model's parameters
         self.training_extras_init(**extra_kwargs)
@@ -92,7 +98,6 @@ class Trainer:
 
         self.on_training_begin()
 
-        # noinspection PyCallingNonCallable
         for self.epoch in tqdm(
             range(num_epochs),
             desc="training",
@@ -100,9 +105,9 @@ class Trainer:
         ):
             self.on_epoch_begin()
 
-            for data_tensors in self.data_load_loop():
+            for data_tensor in self.data_load_loop("train_set"):
                 self.on_iteration_begin()
-                self.on_training_loop(data_tensors)
+                self.on_training_loop(data_tensor)
                 self.on_iteration_end()
             self.on_epoch_end()
 
@@ -114,9 +119,14 @@ class Trainer:
         self.training_time += (time.time() - begin) - self.compute_metrics_time
         self.on_training_end()
 
-    def on_training_loop(self, data_tensors):
-        data_tensors = self.model(data_tensors)
-        self.current_loss = loss = self.loss(data_tensors)
+    def model_output(self, data_tensor):
+        data, indices = data_tensor
+        output = self.model(data)
+        return output
+
+    def on_training_loop(self, data_tensor):
+        output = self.model_output(data_tensor)
+        self.current_loss = loss = self.loss(output)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -142,8 +152,16 @@ class Trainer:
         print("Iteration: {} Loss: {:.4f}".format(self.num_iter, self.current_loss.item()))
         self.num_iter += 1
 
+    @torch.no_grad()
     def on_epoch_end(self):
-        pass
+        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
+            self.model.eval()
+            loss = []
+            for data_tensor in self.data_load_loop(self.validation):
+                output = self.model_output(data_tensor)
+                loss.append(self.loss(output))
+            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
+            self.model.train()
 
     def on_training_end(self):
         pass
@@ -162,20 +180,21 @@ class Trainer:
                 "Loss was NaN {} times".format(self.nan_count)
             )
 
-    def data_load_loop(self):
-        return self._posterior["train_set"]
+    def data_load_loop(self, return_set):
+        return self._posterior[return_set]
 
     def train_test_validation(
             self,
             model=None,
             gene_dataset=None,
-            train_size=0.8,
-            test_size=None,
-            shuffle=True,
             type_class=Posterior
     ):
         model = self.model if model is None and hasattr(self, "model") else model
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
+
+        train_size = self.train_size
+        test_size = self.test_size
+        shuffle = self.shuffle
 
         n = len(self.gene_dataset)
 
@@ -192,15 +211,22 @@ class Trainer:
         test_indices = indices[train_set:(train_set + test_set)]
         val_indices = indices[(train_set + test_set):]
 
+        if len(val_indices) > 0:
+            self.validation = "val_set"
+            self.test_on_epoch_end = True
+        else:
+            self.validation = "test_set"
+            self.test_on_epoch_end = False
+
         return (
             self.create_posterior(
-                model, gene_dataset, indices=train_indices, type_class=type_class
+                model, gene_dataset, shuffle=shuffle, indices=train_indices, type_class=type_class
             ),
             self.create_posterior(
-                model, gene_dataset, indices=test_indices, type_class=type_class
+                model, gene_dataset, shuffle=shuffle, indices=test_indices, type_class=type_class
             ),
             self.create_posterior(
-                model, gene_dataset, indices=val_indices, type_class=type_class
+                model, gene_dataset, shuffle=shuffle, indices=val_indices, type_class=type_class
             )
         )
 
@@ -216,8 +242,8 @@ class Trainer:
         gene_dataset = self.gene_dataset if gene_dataset is None and hasattr(self, "model") else gene_dataset
 
         return type_class(
-            self.model,
-            self.gene_dataset,
+            model,
+            gene_dataset,
             shuffle=shuffle,
             indices=indices,
             use_cuda=self.use_cuda,
@@ -229,21 +255,22 @@ class Trainer:
         self._posterior["test_set"] = test_set
         self._posterior["val_set"] = val_set
 
+    def save_checkpoint(self):
+        if not os.path.isdir(self.output_dir):
+            os.system("mkdir -p {}".format(self.output_dir))
+        torch.save({
+            "epoch": self.epoch,
+            "model_state_dict": self.model.state_dict(),
+            "optimizer_state_dict": self.optimizer.state_dict(),
+            "loss": self.current_loss
+        }, self.output_dir)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    def load_checkpoint(self):
+        if not os.path.isdir(self.output_dir):
+            raise ValueError("File path incorrect. Please specify correct path")
+        checkpoint_dict = torch.load(self.output_dir)
+        self.epoch = checkpoint_dict["epoch"]
+        self.model.load_state_dict(checkpoint_dict["model_state_dict"])
+        self.optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
+        self.current_loss = checkpoint_dict["loss"]
+        self.model.eval()

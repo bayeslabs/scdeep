@@ -10,11 +10,7 @@ import torch.nn.functional as F
 from scipy.stats import expon
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
-import torchvision
-from torchvision import transforms
-import matplotlib.pyplot as plt
 import itertools
-from collections.abc import Iterable
 from typing import Union, Iterable
 
 from trainer import Trainer
@@ -61,10 +57,7 @@ class DeepImputeTrainer(Trainer):
             self,
             model: DeepImputeModel,
             gene_dataset: GeneExpressionDataset,
-            train_size: Union[int, float] = 0.8,
-            test_size: Union[int, float] = 0.2,
             genes_to_impute=None,
-            cell_subset=1,
             min_vmr=0.5,
             nn_lim="auto",
             number_predictor=None,
@@ -80,7 +73,7 @@ class DeepImputeTrainer(Trainer):
         self.min_vmr = min_vmr
         self.subset_dim = subset_dim
 
-        if not type(self.gene_dataset.data) == Union[np.ndarray,scipy.sparse.csr_matrix]:
+        if not type(self.gene_dataset.data) == Union[np.ndarray, scipy.sparse.csr_matrix]:
             self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.values, dtype='float32')
         else:
             self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data, dtype='float32')
@@ -106,12 +99,10 @@ class DeepImputeTrainer(Trainer):
         self.set_targets(self.gene_dataset.data.reindex(columns=genes_to_impute), mode)
         self.set_predictors(self.corr_matrix, n_top_correlated_genes)
 
-        # todo check if the normalization of data matrix happens over all columns(genes) or only those with vmr > 0.5
-
         self.gene_dataset.data = np.log1p(self.gene_dataset.data.values).astype(np.float32)
         # self.gene_dataset.data = torch.tensor(self.gene_dataset.data.values)
 
-        (train_set, test_set, val_set) = self.train_test_validation(train_size=train_size, test_size=test_size)
+        (train_set, test_set, val_set) = self.train_test_validation()
         self.register_posterior(train_set, test_set, val_set)
 
     def loss(self, y_pred, y_true):
@@ -127,19 +118,34 @@ class DeepImputeTrainer(Trainer):
         params = [module.parameters() for module in self.model.modules]
         self.optimizer = optim.Adam(itertools.chain(*params), lr=self.lr)
 
-    def on_training_loop(self, data_tensors):
-        data_tensors, indices = data_tensors
+    def model_output(self, data_tensor):
+        data_tensors, indices = data_tensor
         inp = [data_tensors[:, column] for column in self.predictors]
         # inp = torch.split(data_tensors, [len(i) for i in self.predictors], dim=1)
         output = self.model(inp)
         output = torch.split(output, [len(t) for t in self.targets], dim=1)
         target = [data_tensors[:, column] for column in self.targets]
+        return output, target
+
+    def on_training_loop(self, data_tensor):
+        output, target = self.model_output(data_tensor)
         self.current_loss = loss = self.loss(output, target)
         self.current_loss = torch.mean(torch.stack(loss))
         self.optimizer.zero_grad()
         for l in loss:
             l.backward(retain_graph=True)
         self.optimizer.step()
+
+    @torch.no_grad()
+    def on_epoch_end(self):
+        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
+            self.model.eval()
+            loss = []
+            for data_tensor in self.data_load_loop(self.validation):
+                output, target = self.model_output(data_tensor)
+                loss.append(np.asarray(self.loss(output, target)).mean())
+            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
+            self.model.train()
 
     def correlation_matrix(self, data, number_predictor=None):
 

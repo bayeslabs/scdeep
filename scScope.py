@@ -82,41 +82,54 @@ class scScopeTrainer(Trainer):
             self,
             model: scScope,
             gene_dataset: GeneExpressionDataset,
-            train_size: Union[int, float] = 0.8,
-            test_size: Union[int, float] = 0.2,
             use_mask: bool = True,
             **kwargs
     ):
         super().__init__(model, gene_dataset, **kwargs)
 
         self.model = self.model
-        self.train_size = train_size
-        self.test_size = test_size
         self.use_mask = use_mask
 
-        (train_set, test_set, val_set) = self.train_test_validation(train_size=train_size, test_size=test_size)
+        if self.gene_dataset.num_batches > 1:
+            self.one_hot_batches = np.zeros((self.gene_dataset.nb_cells, self.gene_dataset.num_batches))
+            self.one_hot_batches[:, (self.gene_dataset.batch_indices.reshape((1, -1)) - 1)] = 1.0
+        else:
+            self.one_hot_batches = np.ones_like(self.gene_dataset.batch_indices)
+        self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=float)
+        self.one_hot_batches = self.one_hot_batches.cuda() if self.use_cuda else self.one_hot_batches
+
+        (train_set, test_set, val_set) = self.train_test_validation()
         self.register_posterior(train_set, test_set, val_set)
 
     def on_training_begin(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
-    def on_training_loop(self, data_tensors):
-        data, indices = data_tensors
-        batch_data = torch.tensor(self.gene_dataset.batch_indices[indices, :])
-        if self.gene_dataset.num_batches > 1:
-            one_hot_batches = np.zeros((batch_data.shape[0], self.gene_dataset.num_batches))
-            one_hot_batches[:,(batch_data.reshape((1, -1)) - 1)] = 1.0
-        else:
-            one_hot_batches = np.ones_like(batch_data)
-        one_hot_batches = torch.tensor(one_hot_batches)
-        one_hot_batches = one_hot_batches.cuda() if self.use_cuda else one_hot_batches
+    def model_output(self, data_tensor):
+        data, indices = data_tensor
+        batch_data = self.one_hot_batches[indices, :]
 
-        output_list, latent_list, batch_effect_removal_layer = self.model(data, one_hot_batches.float())
+        output_list, latent_list, batch_effect_removal_layer = self.model(data, batch_data.float())
+        return output_list, latent_list, batch_effect_removal_layer, data
+
+    def on_training_loop(self, data_tensor):
+        output_list, latent_list, batch_effect_removal_layer, data = self.model_output(data_tensor)
         self.current_loss = loss = self.loss(output_list, data, use_mask=self.use_mask,
                                              batch_effect_removal_layer=batch_effect_removal_layer)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
+
+    @torch.no_grad()
+    def on_epoch_end(self):
+        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
+            self.model.eval()
+            loss = []
+            for data_tensor in self.data_load_loop(self.validation):
+                output_list, latent_list, batch_effect_removal_layer, data = self.model_output(data_tensor)
+                loss.append(self.loss(output_list, data, use_mask=self.use_mask,
+                                      batch_effect_removal_layer=batch_effect_removal_layer))
+            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
+            self.model.train()
 
     def loss(self, output_layer_list, input_d, use_mask, batch_effect_removal_layer):
         input_d_corrected = input_d - batch_effect_removal_layer
@@ -144,7 +157,7 @@ class scScopeTrainer(Trainer):
         else:
             one_hot_batches = np.ones_like(batch_data)
         input_d = torch.tensor(input_d)
-        one_hot_batches = torch.tensor(one_hot_batches)
+        one_hot_batches = torch.tensor(one_hot_batches, dtype=float)
         input_d = input_d.cuda() if self.use_cuda else input_d
         one_hot_batches = one_hot_batches.cuda() if self.use_cuda else one_hot_batches
         output_layer, latent_layer, batch_removal_layer = self.model(input_d,

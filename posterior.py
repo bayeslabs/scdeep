@@ -34,8 +34,8 @@ class Posterior:
             self.sampler = None
 
         self.data_loader_kwargs = copy.deepcopy(data_loader_kwargs)
-        self.data_loader_kwargs.update({"shuffle": (not self.sampler is None), "sampler": self.sampler})
-        self.data_loader = DataLoader(gene_dataset, **data_loader_kwargs)
+        self.data_loader_kwargs.update({"sampler": self.sampler})
+        self.data_loader = DataLoader(gene_dataset, **self.data_loader_kwargs)
 
     @property
     def num_cells(self):
