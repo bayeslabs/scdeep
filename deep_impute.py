@@ -243,16 +243,16 @@ class DeepImputeTrainer(Trainer):
         predicted = pd.DataFrame(predicted.detach().numpy(), index=data.index, columns=self.targets.flatten())
         predicted = predicted.groupby(by=predicted.columns, axis=1).mean()
         not_predicted = data.drop(columns=self.targets.flatten())
-        imputed = pd.concat([predicted, not_predicted], axis=1).loc[data.index, data.columns].values
+        imputed = pd.concat([predicted, not_predicted], axis=1).loc[data.index, data.columns]
 
         if policy == "restore":
-            not_replaced_values = (data.values > 0)
-            imputed[not_replaced_values] = data.values[not_replaced_values]
+            not_replaced_values = (data > 0)
+            imputed[not_replaced_values] = data[not_replaced_values]
         elif policy == "max":
-            not_replaced_values = (data > imputed.values)
-            imputed[not_replaced_values] = data.values[not_replaced_values]
+            not_replaced_values = (data > imputed)
+            imputed[not_replaced_values] = data[not_replaced_values]
 
-        return predicted
+        return imputed
 
     def model_score(self, data, test_size=0.2):
 
