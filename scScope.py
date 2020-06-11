@@ -163,7 +163,9 @@ class scScopeTrainer(Trainer):
         output_layer, latent_layer, batch_removal_layer = self.model(input_d,
                                                                      one_hot_batches.float())
 
+        output_layer_numpy = output_layer.detach().numpy()
         latent_layer_numpy = [l.detach().numpy() for l in latent_layer]
+        batch_removal_layer_numpy = batch_removal_layer.detach().numpy()
 
-        return latent_layer_numpy
+        return output_layer_numpy, latent_layer_numpy, batch_removal_layer_numpy
 
