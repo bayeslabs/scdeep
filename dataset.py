@@ -199,14 +199,14 @@ class GeneExpressionDataset(Dataset):
 
 
 def normalize(
-        dataset: GeneExpressionDataset,
+        adata: scanpy.AnnData,
         filter_min_counts=None,
         size_factors=False,
         scale_input=False,
         logtrans_input=False
 ):
-    adata = scanpy.AnnData(dataset.data)
-
+    dataset = GeneExpressionDataset()
+    dataset.from_data(adata.X)
     if filter_min_counts:
         scanpy.pp.filter_genes(adata, min_counts=filter_min_counts)
         scanpy.pp.filter_cells(adata, min_counts=filter_min_counts)
@@ -218,7 +218,11 @@ def normalize(
         scanpy.pp.log1p(adata)
     if scale_input:
         scanpy.pp.scale(adata)
+
     dataset.data = adata.X
+    obs_index = adata.obs.columns
+    for i, index in enumerate(obs_index):
+        dataset.initialize_cell_attribute(index, adata.obs.iloc[:,i].values)
     return dataset
 
 
