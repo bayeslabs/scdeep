@@ -125,8 +125,8 @@ class Trainer:
         return output
 
     def on_training_loop(self, data_tensor):
-        output = self.model_output(data_tensor)
-        self.current_loss = loss = self.loss(output)
+        output, data = self.model_output(data_tensor)
+        self.current_loss = loss = self.loss(data, output)
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
@@ -158,8 +158,8 @@ class Trainer:
             self.model.eval()
             loss = []
             for data_tensor in self.data_load_loop(self.validation):
-                output = self.model_output(data_tensor)
-                loss.append(self.loss(output))
+                output, data = self.model_output(data_tensor)
+                loss.append(self.loss(data, output))
             print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
             self.model.train()
 

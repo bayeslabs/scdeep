@@ -222,13 +222,3 @@ def normalize(
     return dataset
 
 
-
-class GeneExpressionDatasetWithBatches(GeneExpressionDataset):
-
-    def __init__(self):
-        super(GeneExpressionDatasetWithBatches, self).__init__()
-
-    def __getitem__(self, item):
-        return self.data[item, :], self.batch_indices[item, :]
-
-
