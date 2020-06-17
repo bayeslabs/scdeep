@@ -29,12 +29,13 @@ class LinearActivation(nn.Module):
             batchnorm=False,
             activation='relu',
             weight_init=None,
-            weight_init_params: DefaultDict = {},
+            weight_init_params: dict = {},
             bias_init=None,
-            bias_init_params: DefaultDict = {}
+            bias_init_params: dict = {}
     ):
         super(LinearActivation, self).__init__()
         self.batchnorm_layer = None
+        self.act_layer = None
         self.linear = nn.Linear(input_dim, out_dim)
 
         if weight_init is not None:
@@ -44,13 +45,15 @@ class LinearActivation(nn.Module):
 
         if batchnorm:
             self.batchnorm_layer = nn.BatchNorm1d(num_features=out_dim)
-        self.act_layer = self.activations[activation]
+        if activation:
+            self.act_layer = self.activations[activation]
 
     def forward(self, x):
         x = self.linear(x)
         if self.batchnorm_layer:
             x = self.batchnorm_layer(x)
-        x = self.act_layer(x)
+        if self.act_layer:
+            x = self.act_layer(x)
         return x
 
 
