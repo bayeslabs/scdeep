@@ -4,11 +4,9 @@ from typing import List, Union
 import logging
 import torch
 from torch import nn
-from torch.utils.data import DataLoader, Dataset
 import torch.optim as optim
 import torch.nn.functional as F
-import scipy.sparse
-from torch import distributions
+
 
 from trainer import Trainer
 from dataset import GeneExpressionDataset
@@ -31,7 +29,7 @@ class scScope(AutoEncoder):
 
         super(scScope, self).__init__(input_d, encoder_layers_dim, decoder_layers_dim, latent_layer_out_dim,
                                       activation='relu', weight_initializer='normal', weight_init_params={'std': 0.1},
-                                      bias_initializer='zeros')
+                                      bias_initializer='zeros', batchnorm=False)
 
         if len(exp_batch_input) > 0:
             num_batch = exp_batch_input.shape[1]
@@ -92,7 +90,7 @@ class scScopeTrainer(Trainer):
             self.one_hot_batches[:, (self.gene_dataset.batch_indices.reshape((1, -1)) - 1)] = 1.0
         else:
             self.one_hot_batches = np.ones_like(self.gene_dataset.batch_indices)
-        self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=float)
+        self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=torch.float32)
         self.one_hot_batches = self.one_hot_batches.cuda() if self.use_cuda else self.one_hot_batches
 
         (train_set, test_set, val_set) = self.train_test_validation()
@@ -100,8 +98,6 @@ class scScopeTrainer(Trainer):
 
     def on_training_begin(self):
         self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
-        for p in self.model.parameters():
-            print(p.shape)
         for name, param in self.model.named_parameters():
             if param.requires_grad:
                 print(name, param.shape)
@@ -111,7 +107,7 @@ class scScopeTrainer(Trainer):
         data, indices = data_tensor
         batch_data = self.one_hot_batches[indices, :]
 
-        output_list, latent_list, batch_effect_removal_layer = self.model(data, batch_data.float())
+        output_list, latent_list, batch_effect_removal_layer = self.model(data, batch_data)
         return output_list, latent_list, batch_effect_removal_layer, data
 
     def on_training_loop(self, data_tensor):
@@ -159,11 +155,11 @@ class scScopeTrainer(Trainer):
         else:
             one_hot_batches = np.ones_like(batch_data)
         input_d = torch.tensor(input_d)
-        one_hot_batches = torch.tensor(one_hot_batches, dtype=float)
+        one_hot_batches = torch.tensor(one_hot_batches, dtype=torch.float32)
         input_d = input_d.cuda() if self.use_cuda else input_d
         one_hot_batches = one_hot_batches.cuda() if self.use_cuda else one_hot_batches
         output_layer, latent_layer, batch_removal_layer = self.model(input_d,
-                                                                     one_hot_batches.float())
+                                                                     one_hot_batches)
 
         output_layer_numpy = [o.detach().numpy() for o in output_layer]
         latent_layer_numpy = [l.detach().numpy() for l in latent_layer]

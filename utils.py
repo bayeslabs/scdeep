@@ -4,8 +4,24 @@ import torch
 from torch import distributions
 
 
+def nan2zero(x):
+    return torch.where(torch.isnan(x), torch.zeros_like(x), x)
+
+
 def nan2inf(x):
     return torch.where(torch.isnan(x), torch.zeros_like(x)+np.inf, x)
+
+
+def _nelem(x):
+    nelem = torch.sum(torch.tensor(~torch.isnan(x), dtype=torch.float32))
+    return torch.where((torch.eq(nelem, torch.tensor(0.))), torch.tensor(1.), nelem)
+
+
+def reduce_mean(x):
+    nelem = _nelem(x)
+    x = nan2zero(x)
+    return torch.sum(x) / nelem
+
 
 # used the proposed implementation as in
 # https://discuss.pytorch.org/t/implementing-truncated-normal-initializer/4778/21

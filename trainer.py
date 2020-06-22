@@ -255,22 +255,26 @@ class Trainer:
         self._posterior["test_set"] = test_set
         self._posterior["val_set"] = val_set
 
-    def save_checkpoint(self):
-        if not os.path.isdir(self.output_dir):
-            os.system("mkdir -p {}".format(self.output_dir))
+    def save_checkpoint(self, save_dir=None):
+        if save_dir is None:
+            assert (self.output_dir is not None), 'Please enter an output directory in trainer'
+            save_dir = self.output_dir
+        # if not os.path.isdir(save_dir):
+        #     os.system("mkdir -p {}".format(save_dir))
         torch.save({
             "epoch": self.epoch,
             "model_state_dict": self.model.state_dict(),
-            "optimizer_state_dict": self.optimizer.state_dict(),
             "loss": self.current_loss
-        }, self.output_dir)
+        }, save_dir)
 
-    def load_checkpoint(self):
-        if not os.path.isdir(self.output_dir):
+    def load_checkpoint(self, saved_file):
+        if saved_file is None:
+            assert (self.output_dir is not None), 'There is no file specified'
+            saved_file = self.output_dir
+        if not os.path.isfile(saved_file):
             raise ValueError("File path incorrect. Please specify correct path")
-        checkpoint_dict = torch.load(self.output_dir)
+        checkpoint_dict = torch.load(saved_file)
         self.epoch = checkpoint_dict["epoch"]
         self.model.load_state_dict(checkpoint_dict["model_state_dict"])
-        self.optimizer.load_state_dict(checkpoint_dict["optimizer_state_dict"])
         self.current_loss = checkpoint_dict["loss"]
         self.model.eval()

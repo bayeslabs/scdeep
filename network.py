@@ -19,7 +19,7 @@ class ExponentialActivation(nn.Module):
 class LinearActivation(nn.Module):
 
     activations = {'relu': nn.ReLU(), 'sigmoid': nn.Sigmoid(), 'softmax': nn.Softmax(),
-                'exp': ExponentialActivation()}
+                'exp': ExponentialActivation(), 'softplus': nn.Softplus()}
     initializers = {'xavier': nn.init.xavier_uniform_, 'zeros': nn.init.zeros_, 'normal': nn.init.normal_}
 
     def __init__(
@@ -67,9 +67,9 @@ class AutoEncoder(nn.Module):
             batchnorm: bool = True,
             activation: str = 'relu',
             weight_initializer=None,
-            weight_init_params: DefaultDict = {},
+            weight_init_params: dict = {},
             bias_initializer=None,
-            bias_init_params: DefaultDict = {}
+            bias_init_params: dict = {}
     ):
         super(AutoEncoder, self).__init__()
         self.input_dim = input_d.shape[1]
@@ -90,12 +90,12 @@ class AutoEncoder(nn.Module):
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
-            latent_layer_input_dim = encoder_layers_dim[-1]
+            self.latent_layer_input_dim = encoder_layers_dim[-1]
         else:
-            latent_layer_input_dim = self.input_dim
+            self.latent_layer_input_dim = self.input_dim
         self.encode = nn.Sequential(*encode_layers)
 
-        self.latent_layer = LinearActivation(latent_layer_input_dim, latent_layer_out_dim,
+        self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
                                              batchnorm=self.batchnorm, activation=activation,
                                              weight_init=weight_initializer, weight_init_params=weight_init_params,
                                              bias_init=bias_initializer, bias_init_params=bias_init_params)
@@ -115,12 +115,12 @@ class AutoEncoder(nn.Module):
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
-            output_layer_input_dim = decoder_layers_dim[-1]
+            self.output_layer_input_dim = decoder_layers_dim[-1]
         else:
-            output_layer_input_dim = latent_layer_out_dim
+            self.output_layer_input_dim = latent_layer_out_dim
         self.decode = nn.Sequential(*decode_layers)
 
-        self.output_layer = LinearActivation(output_layer_input_dim, self.input_dim,
+        self.output_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
                                              activation=activation,
                                              weight_init=weight_initializer, weight_init_params=weight_init_params,
                                              bias_init=bias_initializer, bias_init_params=bias_init_params)
@@ -132,3 +132,77 @@ class AutoEncoder(nn.Module):
         output = self.output_layer(decoded)
 
         return latent, output
+
+
+class NBAutoEncoder(AutoEncoder):
+    def __init__(
+            self,
+            input_d,
+            encoder_layers_dim: List,
+            decoder_layers_dim: List,
+            latent_layer_out_dim: int,
+            batchnorm: bool = True,
+            activation: str = 'relu',
+            weight_initializer='xavier',
+            **kwargs
+    ):
+        self.batchnorm = batchnorm
+        super(NBAutoEncoder, self).__init__(input_d, encoder_layers_dim, decoder_layers_dim, latent_layer_out_dim,
+                                            batchnorm, activation, weight_initializer, **kwargs)
+
+        # self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
+        #                                      batchnorm=self.batchnorm, activation=None, weight_init=weight_initializer)
+        # the self.output_layer will be equivalent to the mean layer
+        self.output_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
+                                             activation='exp', weight_init=weight_initializer)
+
+        self.theta_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
+                                            activation='softplus', weight_init=weight_initializer)
+
+    def forward(self, x, size_factors):
+        encoded = self.encode(x)
+        latent_output = self.latent_layer(encoded)
+        decoded = self.decode(latent_output)
+        mean = self.output_layer(decoded)
+        mean = mean * size_factors.reshape((-1, 1))
+        theta = self.theta_layer(decoded)
+        return latent_output, [mean, theta]
+
+
+class ZINBAutoEncoder(AutoEncoder):
+    def __init__(
+            self,
+            input_d,
+            encoder_layers_dim: List,
+            decoder_layers_dim: List,
+            latent_layer_out_dim: int,
+            batchnorm: bool = True,
+            activation: str = 'relu',
+            weight_initializer='xavier',
+            **kwargs
+    ):
+        self.batchnorm = batchnorm
+        super(ZINBAutoEncoder, self).__init__(input_d, encoder_layers_dim, decoder_layers_dim, latent_layer_out_dim,
+                                              batchnorm, activation, weight_initializer, **kwargs)
+
+        # self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
+        #                                      batchnorm=self.batchnorm, activation=None, weight_init=weight_initializer)
+        # the self.output_layer will be equivalent to the mean layer
+        self.output_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
+                                             activation='exp', weight_init=weight_initializer)
+
+        self.theta_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
+                                            activation='softplus', weight_init=weight_initializer)
+
+        self.pi_layer = LinearActivation(self.output_layer_input_dim, self.input_dim,
+                                         activation='sigmoid', weight_init=weight_initializer)
+
+    def forward(self, x, size_factors):
+        encoded = self.encode(x)
+        latent_output = self.latent_layer(encoded)
+        decoded = self.decode(latent_output)
+        mean = self.output_layer(decoded)
+        mean = mean * size_factors.reshape((-1, 1))
+        theta = self.theta_layer(decoded)
+        pi = self.pi_layer(decoded)
+        return latent_output, [mean, theta, pi]
