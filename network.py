@@ -1,6 +1,6 @@
 import numpy as np
 import pandas as pd
-from typing import List, Union, DefaultDict
+from typing import List, Union, DefaultDict, Dict
 import logging
 import torch
 from torch import nn
@@ -29,11 +29,15 @@ class LinearActivation(nn.Module):
             batchnorm=False,
             activation='relu',
             weight_init=None,
-            weight_init_params: dict = {},
+            weight_init_params: Dict = None,
             bias_init=None,
-            bias_init_params: dict = {}
+            bias_init_params: Dict = None
     ):
         super(LinearActivation, self).__init__()
+        if weight_init_params is None:
+            weight_init_params = {}
+        if bias_init_params is None:
+            bias_init_params = {}
         self.batchnorm_layer = None
         self.act_layer = None
         self.linear = nn.Linear(input_dim, out_dim)
@@ -67,11 +71,15 @@ class AutoEncoder(nn.Module):
             batchnorm: bool = True,
             activation: str = 'relu',
             weight_initializer=None,
-            weight_init_params: dict = {},
+            weight_init_params: Dict = None,
             bias_initializer=None,
-            bias_init_params: dict = {}
+            bias_init_params: Dict = None
     ):
         super(AutoEncoder, self).__init__()
+        if weight_init_params is None:
+            weight_init_params = {}
+        if bias_init_params is None:
+            bias_init_params = {}
         self.input_dim = input_d.shape[1]
         self.batchnorm = batchnorm
 

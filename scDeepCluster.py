@@ -66,9 +66,7 @@ class ClusteringLayer(nn.Module):
         Return:
             q: student's t-distribution, or soft labels for each sample. shape=(n_samples, n_clusters)
         """
-        # print("ID(X) BEFRE UNSQUEEZE",id(x))
         x = (torch.sum(torch.square(torch.unsqueeze(x, dim=1) - self.clusters), dim=2) / self.alpha)
-        # print("AFTER UNSQUEEZE", id(x))
         q = 1.0 / (1.0 + x)
         q = torch.pow(q, ((self.alpha + 1.0) / 2.0))
         q = (q.T / torch.sum(q, dim=1)).T
@@ -208,7 +206,7 @@ class scDeepClusterTrainer(Trainer):
         weight = (weight.T / torch.sum(weight, dim=1)).T
         return weight
 
-    def training_extras_init(self, n_clusters, ae_file, update_interval=20, tol=1e-3, loss_weights=[1, 1]):
+    def training_extras_init(self, n_clusters, ae_file, update_interval=20, tol=1e-3, loss_weights=(1, 1)):
         self.update_interval = update_interval
         self.tol = tol
         self.loss_weights = loss_weights
@@ -264,19 +262,13 @@ class scDeepClusterTrainer(Trainer):
         self.model.train()
 
     def on_training_loop(self, data_tensor):
-        # print("training loop aaya")
         clustering_output, output = self.model_output(data_tensor)
         data, indices = data_tensor
         raw_data = torch.tensor(self.gene_dataset.raw[indices, :])
         self.optimizer.zero_grad()
         loss1 = self.loss(raw_data, output, eps=self.eps, scale_factor=self.scale_factor, ridge_lambda=self.ridge_lambda)
-        # print("CLUSTERING OUTPUT SIZE: ", clustering_output.shape)
-        # print("TARGET DIST SIZE: ", self.p.shape)
-        # print("CLUSTERING OUTPUT: ", clustering_output)
-        # print("TARGET DIST: ", self.p[indices, :])
         loss2 = self.kl_loss(clustering_output.log(), self.p[indices, :])
-        # print("LOSS KLDIV: ", loss2)
-        loss = self.current_loss = loss1 + loss2
+        loss = self.current_loss = self.loss_weights[0]*loss1 + self.loss_weights[1]*loss2
 
         loss.backward()
         self.optimizer.step()
@@ -297,6 +289,14 @@ class scDeepClusterTrainer(Trainer):
     def on_epoch_end(self):
         pass
 
+    def predict(self, x):
+        x = torch.tensor(x)
+        x = x.cuda() if self.use_cuda else x
+        latent_output = self.extract_feature(x)
+        clusters = self.predict_clusters(latent_output)
+        latent_numpy = latent_output.detach().numpy()
+        clusters_numpy = clusters.detach().numpy()
 
+        return latent_numpy, clusters_numpy
 
 
