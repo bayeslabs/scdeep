@@ -25,6 +25,7 @@ class GeneExpressionDataset(Dataset):
 
         # attributes
         self._data = None
+        self._raw = None
         self._batch_indices = None
         self._labels = None
         self.num_batches = None
@@ -38,6 +39,7 @@ class GeneExpressionDataset(Dataset):
     def from_data(
             self,
             data: Union[np.ndarray, scipy.sparse.csr_matrix],
+            raw: Union[np.ndarray, scipy.sparse.csr_matrix] = None,
             batch_indices: Union[List[int], np.ndarray, scipy.sparse.csr_matrix] = None,
             labels: Union[List[int], np.ndarray, scipy.sparse.csr_matrix] = None,
             gene_names: Union[List[str], np.ndarray] = None,
@@ -52,6 +54,12 @@ class GeneExpressionDataset(Dataset):
             np.ascontiguousarray(data, dtype=np.float32)
             if isinstance(data, np.ndarray)
             else data
+        )
+
+        self._raw = (
+            np.ascontiguousarray(raw, dtype=np.float32)
+            if isinstance(raw, np.ndarray)
+            else raw
         )
 
         self.initialize_cell_attribute(
@@ -166,6 +174,21 @@ class GeneExpressionDataset(Dataset):
         self._data = data
 
     @property
+    def raw(self):
+        return self._raw
+
+    @raw.setter
+    def raw(self, raw: Union[np.ndarray, scipy.sparse.csr_matrix, scipy.sparse.coo_matrix]):
+        num_dim = len(raw.shape)
+        if num_dim != self._data.size:
+            raise ValueError(
+                "Gene Expression raw data should have matching dimensions as data."
+            )
+        if type(raw) == scipy.sparse.coo_matrix:
+            raw = scipy.sparse.csr_matrix(raw)
+        self._raw = raw
+
+    @property
     def nb_cells(self) -> int:
         return self.data.shape[0]
 
@@ -205,11 +228,15 @@ def normalize(
         scale_input=False,
         logtrans_input=False
 ):
-    dataset = GeneExpressionDataset()
-    dataset.from_data(adata.X)
+
     if filter_min_counts:
         scanpy.pp.filter_genes(adata, min_counts=filter_min_counts)
         scanpy.pp.filter_cells(adata, min_counts=filter_min_counts)
+
+    adata.raw = adata
+    dataset = GeneExpressionDataset()
+    dataset.from_data(adata.X, raw=adata.raw.X)
+
     if size_factors:
         scanpy.pp.normalize_per_cell(adata)
         size_factor_cell = dataset.nb_cell_counts / np.median(dataset.nb_cell_counts)
