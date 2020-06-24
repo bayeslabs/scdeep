@@ -48,7 +48,8 @@ class Trainer:
         self.seed = seed
         self.use_cuda = torch.cuda.is_available() and use_cuda
         if self.use_cuda:
-            model.cuda()
+            self.model = self.model.cuda()
+        self.device = torch.device('cuda') if self.use_cuda else torch.device('cpu')
 
         # dataloader
         self._posterior = OrderedDict()

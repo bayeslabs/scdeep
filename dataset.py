@@ -206,7 +206,7 @@ class GeneExpressionDataset(Dataset):
 
     @batch_indices.setter
     def batch_indices(self, batch_indices: Union[List[int], np.ndarray]):
-        batch_indices = np.asarray(batch_indices, dtype=np.int32).reshape((-1, 1))
+        batch_indices = np.asarray(batch_indices, dtype=np.int64).reshape((-1, 1))
         self.num_batches = len(np.unique(batch_indices))
         self._batch_indices = batch_indices
 
@@ -216,7 +216,7 @@ class GeneExpressionDataset(Dataset):
 
     @labels.setter
     def labels(self, labels: Union[List[int], np.ndarray]):
-        labels = np.asarray(labels, dtype=np.int32)
+        labels = np.asarray(labels, dtype=np.int64)
         self.num_labels = len(np.unique(labels))
         self._labels = labels
 

@@ -6,7 +6,7 @@ import torch
 from torch import nn
 import torch.optim as optim
 from tqdm import tqdm
-from sklearn.metrics import adjusted_rand_score
+from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.cluster import KMeans
 
 
@@ -102,10 +102,14 @@ class scDeepCluster(ZINBAutoEncoder):
 
     def forward(self, x, size_factors):
         if not self.pretrain:
-            x = x + (self.noise_sd ** 0.5)*torch.randn(size=x.shape)
+            noise = ((self.noise_sd ** 0.5)*torch.randn(size=x.shape))
+            noise = x.new_tensor(noise)
+            x = x + noise
             for encoder_module in self.encode:
                 x = encoder_module.linear(x)
-                x = x + (self.noise_sd ** 0.5)*torch.randn(size=x.shape)
+                noise = ((self.noise_sd ** 0.5)*torch.randn(size=x.shape))
+                noise = x.new_tensor(noise)
+                x = x + noise
                 x = encoder_module.act_layer(x)
             latent_output = self.latent_layer(x)
             x = self.decode(latent_output)
@@ -117,9 +121,8 @@ class scDeepCluster(ZINBAutoEncoder):
         else:
             encoded = self.encode(x)
             latent_output = self.latent_layer(encoded)
-            latent_clustering = self.latent_layer(encoded)
             decoded = self.decode(latent_output)
-            clustering_output = self.clustering_layer(latent_clustering)
+            clustering_output = self.clustering_layer(latent_output)
             mean = self.output_layer(decoded)
             mean = mean * size_factors.reshape((-1, 1))
             pi = self.pi_layer(decoded)
@@ -156,6 +159,8 @@ class scDeepClusterTrainer(Trainer):
         (train_set, test_set, val_set) = self.train_test_validation()
         self.register_posterior(train_set, test_set, val_set)
 
+        self.y_pred = []
+
     def pretrain(self, n_epochs=200, lr=0.001, ae_file='ae_weights'):
 
         self.model.pretrain = False
@@ -173,11 +178,11 @@ class scDeepClusterTrainer(Trainer):
             for data_tensor in self.data_load_loop("train_set"):
                 data, indices = data_tensor
 
-                size_factors_layer = torch.tensor(self.gene_dataset.size_factor[indices, :])
-                size_factors_layer = size_factors_layer.cuda() if self.use_cuda else size_factors_layer
+                size_factors_layer = data.new_tensor(self.gene_dataset.size_factor[indices, :])
+                #size_factors_layer = size_factors_layer.cuda() if self.use_cuda else size_factors_layer
 
                 latent_output, output = self.model(data, size_factors_layer)
-                raw_data = torch.tensor(self.gene_dataset.raw[indices, :])
+                raw_data = data.new_tensor(self.gene_dataset.raw[indices, :])
                 self.current_loss = loss = self.loss(raw_data, output, eps=self.eps, scale_factor=self.scale_factor,
                                                      ridge_lambda=self.ridge_lambda)
                 self.optimizer.zero_grad()
@@ -189,17 +194,19 @@ class scDeepClusterTrainer(Trainer):
         self.model.pretrain = True
         self.model.eval()
 
+    @torch.no_grad()
     def extract_feature(self, x):  # extract features from before clustering layer
-        self.model.eval()
+        x = x.to(self.device)
         encoded = self.model.encode(x)
         latent_output = self.model.latent_layer(encoded)
         return latent_output
 
+    @torch.no_grad()
     def predict_clusters(self, x):  # predict cluster labels using the output of clustering layer
-        self.model.eval()
         q = self.model.clustering_layer(x)
         return torch.argmax(q, dim=1)
 
+    @torch.no_grad()
     def target_distribution(self, q):  # target distribution P which enhances the discrimination of soft label Q
         self.model.eval()
         weight = q ** 2 / torch.sum(q, dim=0)
@@ -221,9 +228,9 @@ class scDeepClusterTrainer(Trainer):
         self.model.eval()
         print('Initializing cluster centers with k-means.')
         kmeans = KMeans(n_clusters=n_clusters, n_init=20)
-        self.y_pred = kmeans.fit_predict(self.extract_feature(torch.tensor(self.gene_dataset.data)).detach().numpy())
+        self.y_pred = kmeans.fit_predict(self.extract_feature(torch.tensor(self.gene_dataset.data, device=self.device)).cpu().detach().numpy())
         self.y_pred_last = np.copy(self.y_pred)
-        self.model.pretrain_over(torch.tensor(kmeans.cluster_centers_))
+        self.model.pretrain_over(torch.tensor(kmeans.cluster_centers_, device=self.device))
         self.model.train()
 
     def on_training_begin(self):
@@ -241,16 +248,19 @@ class scDeepClusterTrainer(Trainer):
         print("Epoch: {}".format(self.epoch + 1))
         self.model.eval()
         if self.epoch % self.update_interval == 0:
-            self.q, _ = self.model(torch.tensor(self.gene_dataset.data), torch.tensor(self.gene_dataset.size_factor))
+            self.q, _ = self.model(torch.tensor(self.gene_dataset.data, device=self.device),
+                                   torch.tensor(self.gene_dataset.size_factor, device=self.device))
             self.p = self.target_distribution(self.q).detach()
 
             self.y_pred = torch.argmax(self.q, dim=1)
-            self.y_pred = self.y_pred.detach().numpy()
+            self.y_pred = self.y_pred.cpu().detach().numpy()
             # check accuracy of algorithm so far
             if self.gene_dataset.labels is not None:
-                acc = np.round(cluster_acc(self.gene_dataset.labels, self.y_pred), 5)
-                acc = np.round(adjusted_rand_score(self.gene_dataset.labels, self.y_pred), 5)
-                print("Iter: {}\nACC: {:.4f}\n Loss: {:.4f}\n\n".format(self.epoch, acc, self.current_loss))
+                acc = np.round(cluster_acc(self.gene_dataset.labels, self.y_pred), 8)
+                ari = np.round(adjusted_rand_score(self.gene_dataset.labels, self.y_pred), 8)
+                nmi = np.round(normalized_mutual_info_score(self.gene_dataset.labels, self.y_pred), 8)
+                print("Iter: {}\nACC: {:.4f}\n ARI: {:.4f}\nNMI: {:.4f}\nLoss: {:.4f}\n\n".format(self.epoch, acc, ari,
+                                                                                                  nmi, self.current_loss))
 
             # check stop criterion
             delta_label = np.sum(self.y_pred != self.y_pred_last).astype(np.float32) / self.y_pred.shape[0]
@@ -264,10 +274,11 @@ class scDeepClusterTrainer(Trainer):
     def on_training_loop(self, data_tensor):
         clustering_output, output = self.model_output(data_tensor)
         data, indices = data_tensor
-        raw_data = torch.tensor(self.gene_dataset.raw[indices, :])
+        raw_data = data.new_tensor(self.gene_dataset.raw[indices, :])
         self.optimizer.zero_grad()
         loss1 = self.loss(raw_data, output, eps=self.eps, scale_factor=self.scale_factor, ridge_lambda=self.ridge_lambda)
-        loss2 = self.kl_loss(clustering_output.log(), self.p[indices, :])
+        loss2 = self.kl_loss(clustering_output.log(), self.p[indices.long(), :])
+        print('KL Loss: {:.4f}\nAE Loss: {:.4f}\n'.format(loss2.item(), loss1.item()))
         loss = self.current_loss = self.loss_weights[0]*loss1 + self.loss_weights[1]*loss2
 
         loss.backward()
@@ -280,8 +291,8 @@ class scDeepClusterTrainer(Trainer):
 
     def model_output(self, data_tensor):
         data, indices = data_tensor
-        size_factors_layer = torch.tensor(self.gene_dataset.size_factor[indices, :])
-        size_factors_layer = size_factors_layer.cuda() if self.use_cuda else size_factors_layer
+        size_factors_layer = data.new_tensor(self.gene_dataset.size_factor[indices, :])
+        # size_factors_layer = size_factors_layer.cuda() if self.use_cuda else size_factors_layer
 
         clustering_output, output = self.model(data, size_factors_layer)
         return clustering_output, output
@@ -289,13 +300,13 @@ class scDeepClusterTrainer(Trainer):
     def on_epoch_end(self):
         pass
 
+    @torch.no_grad()
     def predict(self, x):
-        x = torch.tensor(x)
-        x = x.cuda() if self.use_cuda else x
+        x = torch.tensor(x, device=self.device)
         latent_output = self.extract_feature(x)
         clusters = self.predict_clusters(latent_output)
-        latent_numpy = latent_output.detach().numpy()
-        clusters_numpy = clusters.detach().numpy()
+        latent_numpy = latent_output.cpu().detach().numpy()
+        clusters_numpy = clusters.cpu().detach().numpy()
 
         return latent_numpy, clusters_numpy
 
