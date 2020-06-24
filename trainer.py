@@ -160,7 +160,7 @@ class Trainer:
             loss = []
             for data_tensor in self.data_load_loop(self.validation):
                 output, data = self.model_output(data_tensor)
-                loss.append(self.loss(data, output))
+                loss.append(self.loss(data, output).item())
             print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
             self.model.train()
 

@@ -82,7 +82,6 @@ class scScopeTrainer(Trainer):
     ):
         super().__init__(model, gene_dataset, **kwargs)
 
-        self.model = self.model
         self.use_mask = use_mask
 
         if self.gene_dataset.num_batches > 1:
@@ -90,8 +89,8 @@ class scScopeTrainer(Trainer):
             self.one_hot_batches[:, (self.gene_dataset.batch_indices.reshape((1, -1)) - 1)] = 1.0
         else:
             self.one_hot_batches = np.ones_like(self.gene_dataset.batch_indices)
-        self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=torch.float32)
-        self.one_hot_batches = self.one_hot_batches.cuda() if self.use_cuda else self.one_hot_batches
+        self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=torch.float32, device=self.device)
+        # self.one_hot_batches = self.one_hot_batches.cuda() if self.use_cuda else self.one_hot_batches
 
         (train_set, test_set, val_set) = self.train_test_validation()
         self.register_posterior(train_set, test_set, val_set)
@@ -126,7 +125,7 @@ class scScopeTrainer(Trainer):
             for data_tensor in self.data_load_loop(self.validation):
                 output_list, latent_list, batch_effect_removal_layer, data = self.model_output(data_tensor)
                 loss.append(self.loss(output_list, data, use_mask=self.use_mask,
-                                      batch_effect_removal_layer=batch_effect_removal_layer))
+                                      batch_effect_removal_layer=batch_effect_removal_layer).item())
             print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
             self.model.train()
 
@@ -147,6 +146,7 @@ class scScopeTrainer(Trainer):
                               torch.norm(torch.mul(val_mask, input_d))
         return loss_value
 
+    @torch.no_grad()
     def predict(self, input_d, batch_data):
 
         if len(np.unique(batch_data)) > 1:
@@ -154,16 +154,15 @@ class scScopeTrainer(Trainer):
             one_hot_batches[:, (batch_data.reshape((1, -1)) - 1)] = 1
         else:
             one_hot_batches = np.ones_like(batch_data)
-        input_d = torch.tensor(input_d)
-        one_hot_batches = torch.tensor(one_hot_batches, dtype=torch.float32)
-        input_d = input_d.cuda() if self.use_cuda else input_d
-        one_hot_batches = one_hot_batches.cuda() if self.use_cuda else one_hot_batches
+        input_d = torch.tensor(input_d, device=self.device)
+        one_hot_batches = torch.tensor(one_hot_batches, dtype=torch.float32, device=self.device)
+
         output_layer, latent_layer, batch_removal_layer = self.model(input_d,
                                                                      one_hot_batches)
 
-        output_layer_numpy = [o.detach().numpy() for o in output_layer]
-        latent_layer_numpy = [l.detach().numpy() for l in latent_layer]
-        batch_removal_layer_numpy = batch_removal_layer.detach().numpy()
+        output_layer_numpy = [o.cpu().detach().numpy() for o in output_layer]
+        latent_layer_numpy = [l.cpu().detach().numpy() for l in latent_layer]
+        batch_removal_layer_numpy = batch_removal_layer.cpu().detach().numpy()
 
         return output_layer_numpy, latent_layer_numpy, batch_removal_layer_numpy
 
