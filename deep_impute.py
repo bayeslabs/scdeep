@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy.stats import expon
-from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import itertools
 from typing import Union, Iterable
@@ -36,17 +35,18 @@ class DeepImputeModel(nn.Module):
     def __init__(self):
         super(DeepImputeModel, self).__init__()
         self.inp = []
-        self.modules = []
+        self.module_list = nn.ModuleList([])
 
     def initialize_modules(self, input_dims):
         self.inp = input_dims
-        self.modules = [SubModule(input_dim=i) for i in self.inp]
+        for i in self.inp:
+            self.module_list.append(SubModule(input_dim=i))
 
     def forward(self, x):
         # x = torch.split(x, self.inp, dim=1)
         output = []
-        for i, inp in enumerate(x):
-            output.append(self.modules[i](inp))
+        for i, mod in enumerate(self.module_list):
+            output.append(mod(x[i]))
         output = torch.cat(output, dim=1)
         return output
 
@@ -73,10 +73,10 @@ class DeepImputeTrainer(Trainer):
         self.min_vmr = min_vmr
         self.subset_dim = subset_dim
 
-        if not type(self.gene_dataset.data) == Union[np.ndarray, scipy.sparse.csr_matrix]:
-            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.values, dtype='float32')
-        else:
+        if type(self.gene_dataset.data) == np.ndarray or type(self.gene_dataset.data) == scipy.sparse.csr_matrix:
             self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data, dtype='float32')
+        else:
+            self.gene_dataset.data = pd.DataFrame(self.gene_dataset.data.values, dtype='float32')
         # (note: below operations are carried out on data assuming it is a pandas dataframe)
         genes_vmr = (self.gene_dataset.data.var() / (1 + self.gene_dataset.data.mean())).sort_values(ascending=False)
         genes_vmr = genes_vmr[genes_vmr > 0]
@@ -115,8 +115,11 @@ class DeepImputeTrainer(Trainer):
 
     def on_training_begin(self):
         self.model.initialize_modules([len(pred) for pred in self.predictors])
-        params = [module.parameters() for module in self.model.modules]
-        self.optimizer = optim.Adam(itertools.chain(*params), lr=self.lr)
+        self.model = self.model.cuda()
+        for name, param in self.model.named_parameters():
+            print(name)
+            print(param.shape)
+        self.optimizer = optim.Adam(self.model.parameters(), lr=self.lr)
 
     def model_output(self, data_tensor):
         data_tensors, indices = data_tensor
@@ -143,7 +146,7 @@ class DeepImputeTrainer(Trainer):
             loss = []
             for data_tensor in self.data_load_loop(self.validation):
                 output, target = self.model_output(data_tensor)
-                loss.append(np.asarray(self.loss(output, target)).mean())
+                loss.append(np.asarray([l.item() for l in self.loss(output, target)]).mean())
             print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
             self.model.train()
 
@@ -232,15 +235,16 @@ class DeepImputeTrainer(Trainer):
         data_to_mask[~bin_mask] = 0
         return unmasked_dataset, data_to_mask, test_indices
 
+    @torch.no_grad()
     def predict(self, data, return_imputed_only=False, policy="restore"):
 
-        data_tensor = torch.tensor(data.values)
+        data_tensor = torch.tensor(data.values, device=self.device)
 
         inp = [data_tensor[:, column] for column in self.predictors]
 
         predicted = self.model(inp)
 
-        predicted = pd.DataFrame(predicted.detach().numpy(), index=data.index, columns=self.targets.flatten())
+        predicted = pd.DataFrame(predicted.cpu().detach().numpy(), index=data.index, columns=self.targets.flatten())
         predicted = predicted.groupby(by=predicted.columns, axis=1).mean()
         not_predicted = data.drop(columns=self.targets.flatten())
         imputed = pd.concat([predicted, not_predicted], axis=1).loc[data.index, data.columns]
