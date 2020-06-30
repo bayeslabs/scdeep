@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 import scipy.io
+from statistics import mean
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -115,7 +116,7 @@ class DeepImputeTrainer(Trainer):
 
     def on_training_begin(self):
         self.model.initialize_modules([len(pred) for pred in self.predictors])
-        self.model = self.model.cuda()
+        self.model = self.model.cuda() if self.use_cuda else self.model
         for name, param in self.model.named_parameters():
             print(name)
             print(param.shape)
@@ -140,15 +141,10 @@ class DeepImputeTrainer(Trainer):
         self.optimizer.step()
 
     @torch.no_grad()
-    def on_epoch_end(self):
-        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
-            self.model.eval()
-            loss = []
-            for data_tensor in self.data_load_loop(self.validation):
-                output, target = self.model_output(data_tensor)
-                loss.append(np.asarray([l.item() for l in self.loss(output, target)]).mean())
-            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
-            self.model.train()
+    def on_validation(self, data_tensor, loss):
+        output, target = self.model_output(data_tensor)
+        loss.append(np.asarray([l.item() for l in self.loss(output, target)]).mean())
+        return loss
 
     def correlation_matrix(self, data, number_predictor=None):
 

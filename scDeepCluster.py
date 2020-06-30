@@ -108,7 +108,7 @@ class scDeepCluster(ZINBAutoEncoder):
             for encoder_module in self.encode:
                 x = encoder_module.linear(x)
                 noise = ((self.noise_sd ** 0.5)*torch.randn(size=x.shape))
-                noise = x.new_tensor(noise)
+                noise = x.new_tensor(noise.detach())
                 x = x + noise
                 x = encoder_module.act_layer(x)
             latent_output = self.latent_layer(x)
@@ -236,7 +236,7 @@ class scDeepClusterTrainer(Trainer):
     def on_training_begin(self):
         torch.autograd.set_detect_anomaly(True)
         self.optimizer = optim.Adadelta(self.model.parameters(), lr=self.lr)
-        self.kl_loss = torch.nn.KLDivLoss()
+        self.kl_loss = torch.nn.KLDivLoss(reduction='mean')
         self.loss = zinb_loss
 
         for name, param in self.model.named_parameters():
@@ -278,7 +278,7 @@ class scDeepClusterTrainer(Trainer):
         self.optimizer.zero_grad()
         loss1 = self.loss(raw_data, output, eps=self.eps, scale_factor=self.scale_factor, ridge_lambda=self.ridge_lambda)
         loss2 = self.kl_loss(clustering_output.log(), self.p[indices.long(), :])
-        print('KL Loss: {:.4f}\nAE Loss: {:.4f}\n'.format(loss2.item(), loss1.item()))
+        #print('KL Loss: {:.4f}\nAE Loss: {:.4f}\n'.format(loss2.item(), loss1.item()))
         loss = self.current_loss = self.loss_weights[0]*loss1 + self.loss_weights[1]*loss2
 
         loss.backward()
@@ -298,6 +298,9 @@ class scDeepClusterTrainer(Trainer):
         return clustering_output, output
 
     def on_epoch_end(self):
+        pass
+
+    def on_training_end(self):
         pass
 
     @torch.no_grad()

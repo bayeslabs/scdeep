@@ -10,6 +10,8 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import matplotlib.pyplot as plt
+from statistics import mean
 
 from tqdm import tqdm
 
@@ -72,6 +74,9 @@ class Trainer:
         self.current_loss = None
         self.was_previous_loss_nan = False
         self.nan_count = 0
+        self.training_loss_per_epoch = []
+        self.training_loss = [[], []]
+        self.validation_loss = [[], []]
 
         self.output_dir = output_dir
         self.train_size = train_size
@@ -143,7 +148,8 @@ class Trainer:
 
     def on_epoch_begin(self):
         self.num_iter = 0
-        print("Epoch: {}".format(self.epoch + 1))
+        print("\nEpoch: {}\n".format(self.epoch + 1))
+        self.training_loss_per_epoch = []
 
     def on_iteration_begin(self):
         pass
@@ -155,19 +161,37 @@ class Trainer:
 
     @torch.no_grad()
     def on_epoch_end(self):
-        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
+        self.training_loss[1].append(mean(self.training_loss_per_epoch))
+        self.training_loss[0].append(self.epoch)
+        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or (self.epoch == self.num_epochs - 1):
             self.model.eval()
             loss = []
             for data_tensor in self.data_load_loop(self.validation):
-                output, data = self.model_output(data_tensor)
-                loss.append(self.loss(data, output).item())
-            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
+                loss = self.on_validation(data_tensor, loss)
             self.model.train()
+            val_loss = np.asarray(loss).mean()
+            self.validation_loss[1].append(val_loss)
+            self.validation_loss[0].append(self.epoch)
+            print("\nValidation Loss: {:.4f}\n".format(val_loss))
+
+    @torch.no_grad()
+    def on_validation(self, data_tensor, loss):
+        output, data = self.model_output(data_tensor)
+        loss.append(self.loss(data, output).item())
+        return loss
 
     def on_training_end(self):
-        pass
+        # plot train and val graphs
+        plt.plot(self.training_loss[0], self.training_loss[1], 'g', label='Training loss')
+        plt.plot(self.validation_loss[0], self.validation_loss[1], 'b', label='validation loss')
+        plt.title('Training and Validation loss')
+        plt.xlabel('Epochs')
+        plt.ylabel('Loss')
+        plt.legend()
+        plt.show()
 
     def check_training_status(self):
+        self.training_loss_per_epoch.append(self.current_loss.item())
         is_loss_nan = torch.isnan(self.current_loss).item()
         if is_loss_nan:
             self.nan_count += 1

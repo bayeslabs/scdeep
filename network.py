@@ -19,7 +19,7 @@ class ExponentialActivation(nn.Module):
 class LinearActivation(nn.Module):
 
     activations = {'relu': nn.ReLU(), 'sigmoid': nn.Sigmoid(), 'softmax': nn.Softmax(),
-                'exp': ExponentialActivation(), 'softplus': nn.Softplus()}
+                   'exp': ExponentialActivation(), 'softplus': nn.Softplus()}
     initializers = {'xavier': nn.init.xavier_uniform_, 'zeros': nn.init.zeros_, 'normal': nn.init.normal_}
 
     def __init__(
@@ -28,6 +28,7 @@ class LinearActivation(nn.Module):
             out_dim,
             batchnorm=False,
             activation='relu',
+            dropout=0.,
             weight_init=None,
             weight_init_params: Dict = None,
             bias_init=None,
@@ -40,6 +41,7 @@ class LinearActivation(nn.Module):
             bias_init_params = {}
         self.batchnorm_layer = None
         self.act_layer = None
+        self.dropout_layer = None
         self.linear = nn.Linear(input_dim, out_dim)
 
         if weight_init is not None:
@@ -51,6 +53,8 @@ class LinearActivation(nn.Module):
             self.batchnorm_layer = nn.BatchNorm1d(num_features=out_dim)
         if activation:
             self.act_layer = self.activations[activation]
+        if dropout > 0.0:
+            self.dropout_layer = nn.Dropout(dropout)
 
     def forward(self, x):
         x = self.linear(x)
@@ -58,6 +62,8 @@ class LinearActivation(nn.Module):
             x = self.batchnorm_layer(x)
         if self.act_layer:
             x = self.act_layer(x)
+        if self.dropout_layer:
+            x = self.dropout_layer(x)
         return x
 
 
@@ -70,6 +76,7 @@ class AutoEncoder(nn.Module):
             latent_layer_out_dim: int,
             batchnorm: bool = True,
             activation: str = 'relu',
+            dropout: float = 0.,
             weight_initializer=None,
             weight_init_params: Dict = None,
             bias_initializer=None,
@@ -89,12 +96,14 @@ class AutoEncoder(nn.Module):
                 if i == 0:
                     encode_layers.append(LinearActivation(self.input_dim, encoder_layers_dim[i],
                                                           batchnorm=self.batchnorm, activation=activation,
+                                                          dropout=dropout,
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
                 else:
                     encode_layers.append(LinearActivation(encoder_layers_dim[i - 1], encoder_layers_dim[i],
                                                           batchnorm=self.batchnorm, activation=activation,
+                                                          dropout=dropout,
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
@@ -105,6 +114,7 @@ class AutoEncoder(nn.Module):
 
         self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
                                              batchnorm=self.batchnorm, activation=activation,
+                                             dropout=dropout,
                                              weight_init=weight_initializer, weight_init_params=weight_init_params,
                                              bias_init=bias_initializer, bias_init_params=bias_init_params)
 
@@ -114,12 +124,14 @@ class AutoEncoder(nn.Module):
                 if i == 0:
                     decode_layers.append(LinearActivation(latent_layer_out_dim, decoder_layers_dim[i],
                                                           batchnorm=self.batchnorm, activation=activation,
+                                                          dropout=dropout,
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
                 else:
                     decode_layers.append(LinearActivation(decoder_layers_dim[i - 1], decoder_layers_dim[i],
                                                           batchnorm=self.batchnorm, activation=activation,
+                                                          dropout=dropout,
                                                           weight_init=weight_initializer,
                                                           weight_init_params=weight_init_params,
                                                           bias_init=bias_initializer, bias_init_params=bias_init_params))
@@ -155,8 +167,10 @@ class NBAutoEncoder(AutoEncoder):
             **kwargs
     ):
         self.batchnorm = batchnorm
-        super(NBAutoEncoder, self).__init__(input_d, encoder_layers_dim, decoder_layers_dim, latent_layer_out_dim,
-                                            batchnorm, activation, weight_initializer, **kwargs)
+        super(NBAutoEncoder, self).__init__(input_d, encoder_layers_dim=encoder_layers_dim,
+                                            decoder_layers_dim=decoder_layers_dim, latent_layer_out_dim=latent_layer_out_dim,
+                                            batchnorm=batchnorm, activation=activation,
+                                            weight_initializer=weight_initializer, **kwargs)
 
         # self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
         #                                      batchnorm=self.batchnorm, activation=None, weight_init=weight_initializer)
@@ -190,8 +204,10 @@ class ZINBAutoEncoder(AutoEncoder):
             **kwargs
     ):
         self.batchnorm = batchnorm
-        super(ZINBAutoEncoder, self).__init__(input_d, encoder_layers_dim, decoder_layers_dim, latent_layer_out_dim,
-                                              batchnorm, activation, weight_initializer, **kwargs)
+        super(ZINBAutoEncoder, self).__init__(input_d, encoder_layers_dim=encoder_layers_dim,
+                                              decoder_layers_dim=decoder_layers_dim, latent_layer_out_dim=latent_layer_out_dim,
+                                              batchnorm=batchnorm, activation=activation,
+                                              weight_initializer=weight_initializer, **kwargs)
 
         # self.latent_layer = LinearActivation(self.latent_layer_input_dim, latent_layer_out_dim,
         #                                      batchnorm=self.batchnorm, activation=None, weight_init=weight_initializer)

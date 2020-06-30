@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 from typing import List, Union
 import logging
+from statistics import mean
 import torch
 from torch import nn
 import torch.optim as optim
@@ -43,9 +44,13 @@ class scScope(AutoEncoder):
                                          weight_init='normal', weight_init_params={'std': 0.1},
                                          bias_init='zeros')
 
-        impute_layer2 = nn.Linear(64, self.input_dim)
-        nn.init.zeros_(impute_layer2.bias)
-        nn.init.normal_(impute_layer2.weight, mean=0.0, std=0.1)
+        impute_layer2 = LinearActivation(64, self.input_dim, activation=None,
+                                         weight_init='normal', weight_init_params={'std': 0.1},
+                                         bias_init='zeros')
+
+        # impute_layer2 = nn.Linear(64, self.input_dim)
+        # nn.init.zeros_(impute_layer2.bias)
+        # nn.init.normal_(impute_layer2.weight, mean=0.0, std=0.1)
 
         self.imputation_model = nn.Sequential(impute_layer1, impute_layer2)
 
@@ -88,7 +93,7 @@ class scScopeTrainer(Trainer):
             self.one_hot_batches = np.zeros((self.gene_dataset.nb_cells, self.gene_dataset.num_batches))
             self.one_hot_batches[:, (self.gene_dataset.batch_indices.reshape((1, -1)) - 1)] = 1.0
         else:
-            self.one_hot_batches = np.ones_like(self.gene_dataset.batch_indices)
+            self.one_hot_batches = np.zeros_like(self.gene_dataset.batch_indices)
         self.one_hot_batches = torch.tensor(self.one_hot_batches, dtype=torch.float32, device=self.device)
         # self.one_hot_batches = self.one_hot_batches.cuda() if self.use_cuda else self.one_hot_batches
 
@@ -104,7 +109,7 @@ class scScopeTrainer(Trainer):
     def model_output(self, data_tensor):
 
         data, indices = data_tensor
-        batch_data = self.one_hot_batches[indices, :]
+        batch_data = self.one_hot_batches[indices.long(), :]
 
         output_list, latent_list, batch_effect_removal_layer = self.model(data, batch_data)
         return output_list, latent_list, batch_effect_removal_layer, data
@@ -118,32 +123,38 @@ class scScopeTrainer(Trainer):
         self.optimizer.step()
 
     @torch.no_grad()
-    def on_epoch_end(self):
-        if (self.epoch % self.frequency_stats == 0) or self.epoch == 0 or self.epoch == self.num_epochs:
-            self.model.eval()
-            loss = []
-            for data_tensor in self.data_load_loop(self.validation):
-                output_list, latent_list, batch_effect_removal_layer, data = self.model_output(data_tensor)
-                loss.append(self.loss(output_list, data, use_mask=self.use_mask,
-                                      batch_effect_removal_layer=batch_effect_removal_layer).item())
-            print("Validation Loss: {:.4f}".format(np.asarray(loss).mean()))
-            self.model.train()
+    def on_validation(self, data_tensor, loss):
+        output_list, latent_list, batch_effect_removal_layer, data = self.model_output(data_tensor)
+        loss.append(self.loss(output_list, data, use_mask=self.use_mask,
+                              batch_effect_removal_layer=batch_effect_removal_layer).item())
+        return loss
 
     def loss(self, output_layer_list, input_d, use_mask, batch_effect_removal_layer):
-        input_d_corrected = input_d - batch_effect_removal_layer
-        if use_mask:
-            val_mask = torch.sign(input_d_corrected)
-        else:
-            val_mask = torch.sign(input_d_corrected + 1)
+        # input_d_corrected = input_d - batch_effect_removal_layer
+        # if use_mask:
+        #     val_mask = torch.sign(input_d_corrected)
+        # else:
+        #     val_mask = torch.sign(input_d_corrected + 1)
 
+        # for i in range(len(output_layer_list)):
+        #     out_layer = output_layer_list[i]
+        #     if i == 0:
+        #         loss_value = torch.norm(torch.mul(val_mask, (out_layer - input_d_corrected))) / \
+        #                      torch.norm(torch.mul(val_mask, input_d))
+        #     else:
+        #         loss_value += torch.norm(torch.mul(val_mask, (out_layer - input_d_corrected))) / \
+        #                       torch.norm(torch.mul(val_mask, input_d))
+        # return loss_value
+        input_d_corrected = input_d - batch_effect_removal_layer
+        val_mask = torch.sign(input_d_corrected)
         for i in range(len(output_layer_list)):
             out_layer = output_layer_list[i]
             if i == 0:
-                loss_value = torch.norm(torch.mul(val_mask, (out_layer - input_d_corrected))) / \
-                             torch.norm(torch.mul(val_mask, input_d))
+                loss_value = (torch.norm(torch.mul(val_mask, out_layer - input_d_corrected)))
+                print("\nLoss 1: {:.4f}".format(loss_value))
             else:
-                loss_value += torch.norm(torch.mul(val_mask, (out_layer - input_d_corrected))) / \
-                              torch.norm(torch.mul(val_mask, input_d))
+                loss_value = loss_value + (torch.norm(torch.mul(val_mask, out_layer - input_d_corrected)))
+                print("Loss 2: {:.4f}\n".format(loss_value))
         return loss_value
 
     @torch.no_grad()
@@ -153,7 +164,7 @@ class scScopeTrainer(Trainer):
             one_hot_batches = np.zeros((batch_data.shape[0], len(np.unique(batch_data))))
             one_hot_batches[:, (batch_data.reshape((1, -1)) - 1)] = 1
         else:
-            one_hot_batches = np.ones_like(batch_data)
+            one_hot_batches = np.zeros_like(batch_data)
         input_d = torch.tensor(input_d, device=self.device)
         one_hot_batches = torch.tensor(one_hot_batches, dtype=torch.float32, device=self.device)
 
