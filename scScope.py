@@ -151,10 +151,8 @@ class scScopeTrainer(Trainer):
             out_layer = output_layer_list[i]
             if i == 0:
                 loss_value = (torch.norm(torch.mul(val_mask, out_layer - input_d_corrected)))
-                print("\nLoss 1: {:.4f}".format(loss_value))
             else:
                 loss_value = loss_value + (torch.norm(torch.mul(val_mask, out_layer - input_d_corrected)))
-                print("Loss 2: {:.4f}\n".format(loss_value))
         return loss_value
 
     @torch.no_grad()

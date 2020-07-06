@@ -247,7 +247,7 @@ class scDeepClusterTrainer(Trainer):
         self.num_iter = 0
         print("Epoch: {}".format(self.epoch + 1))
         self.model.eval()
-        if self.epoch % self.update_interval == 0:
+        if self.epoch % self.update_interval == 0 or self.epoch == self.num_epochs - 1:
             self.q, _ = self.model(torch.tensor(self.gene_dataset.data, device=self.device),
                                    torch.tensor(self.gene_dataset.size_factor, device=self.device))
             self.p = self.target_distribution(self.q).detach()
@@ -267,7 +267,7 @@ class scDeepClusterTrainer(Trainer):
             self.y_pred_last = np.copy(self.y_pred)
             if self.epoch > 0 and delta_label < self.tol:
                 print('delta_label ', delta_label, '< tol ', self.tol)
-                print('Reached tolerance threshold. Stopping training.')
+                print('Reached tolerance threshold...')
                 # todo figure out how to stop training
         self.model.train()
 
