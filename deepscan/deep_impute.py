@@ -4,17 +4,15 @@ import numpy as np
 import pandas as pd
 import scipy.sparse
 import scipy.io
-from statistics import mean
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from scipy.stats import expon
 import torch.optim as optim
-import itertools
-from typing import Union, Iterable
+from typing import Union
 
-from trainer import Trainer
-from dataset import GeneExpressionDataset
+from deepscan.trainer import Trainer
+from deepscan.dataset import GeneExpressionDataset
 
 
 class SubModule(nn.Module):

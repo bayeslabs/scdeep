@@ -8,15 +8,14 @@ from collections import OrderedDict
 import os
 
 import numpy as np
-import pandas as pd
 import torch
 import matplotlib.pyplot as plt
 from statistics import mean
 
 from tqdm import tqdm
 
-from posterior import Posterior
-from dataset import GeneExpressionDataset
+from deepscan.posterior import Posterior
+from deepscan.dataset import GeneExpressionDataset
 
 logger = logging.getLogger(__name__)
 

@@ -1,16 +1,13 @@
-import numpy as np
-import pandas as pd
-from typing import List, Union
-import logging
+from typing import Union
 import torch
 from torch import nn
 import torch.optim as optim
 
 
-from trainer import Trainer
-from dataset import GeneExpressionDataset, normalize
-from network import AutoEncoder, NBAutoEncoder, ZINBAutoEncoder
-from losses import nb_loss, zinb_loss
+from deepscan.trainer import Trainer
+from deepscan.dataset import GeneExpressionDataset
+from deepscan.network import NBAutoEncoder, ZINBAutoEncoder
+from deepscan.losses import nb_loss, zinb_loss
 
 
 class DCATrainer(Trainer):

@@ -1,9 +1,7 @@
-import numpy as np
-import pandas as pd
 import torch
 
 
-from utils import nan2inf, reduce_mean
+from deepscan.utils import nan2inf, reduce_mean
 
 
 def nb_loss(y_true, output, mean=True, eps=1e-10, scale_factor=1.0, ridge_lambda=None, mask=False):

@@ -3,12 +3,11 @@
 
 import logging
 import numpy as np
-import pandas as pd
 import torch
 import copy
 
-from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
-from dataset import GeneExpressionDataset
+from torch.utils.data import DataLoader, SubsetRandomSampler
+from deepscan.dataset import GeneExpressionDataset
 
 logger = logging.getLogger(__name__)
 

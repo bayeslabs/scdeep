@@ -1,18 +1,14 @@
 import numpy as np
-import pandas as pd
-from typing import List, Union
-import logging
-from statistics import mean
+from typing import List
 import torch
 from torch import nn
 import torch.optim as optim
 import torch.nn.functional as F
 
 
-from trainer import Trainer
-from dataset import GeneExpressionDataset
-from utils import truncated_normal, parameterized_truncated_normal
-from network import AutoEncoder, LinearActivation
+from deepscan.trainer import Trainer
+from deepscan.dataset import GeneExpressionDataset
+from deepscan.network import AutoEncoder, LinearActivation
 
 
 class scScope(AutoEncoder):

@@ -1,7 +1,5 @@
 import numpy as np
-import pandas as pd
-from typing import List, Union
-import logging
+from typing import List
 import torch
 from torch import nn
 import torch.optim as optim
@@ -10,10 +8,10 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.cluster import KMeans
 
 
-from trainer import Trainer
-from dataset import GeneExpressionDataset, normalize
-from network import AutoEncoder, NBAutoEncoder, ZINBAutoEncoder
-from losses import nb_loss, zinb_loss
+from deepscan.trainer import Trainer
+from deepscan.dataset import GeneExpressionDataset
+from deepscan.network import ZINBAutoEncoder
+from deepscan.losses import zinb_loss
 
 
 def cluster_acc(y_true, y_pred):
