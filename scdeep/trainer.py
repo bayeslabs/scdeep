@@ -14,8 +14,8 @@ from statistics import mean
 
 from tqdm import tqdm
 
-from deepscan.posterior import Posterior
-from deepscan.dataset import GeneExpressionDataset
+from scdeep.posterior import Posterior
+from scdeep.dataset import GeneExpressionDataset
 
 logger = logging.getLogger(__name__)
 

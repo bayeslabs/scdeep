@@ -6,7 +6,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name="deepscan",
+    name="scdeep",
     version=VERSION,
     author="BayesLabs",
     author_email="contact@bayeslabs.co",

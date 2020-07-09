@@ -7,7 +7,7 @@ import torch
 import copy
 
 from torch.utils.data import DataLoader, SubsetRandomSampler
-from deepscan.dataset import GeneExpressionDataset
+from scdeep.dataset import GeneExpressionDataset
 
 logger = logging.getLogger(__name__)
 

@@ -11,8 +11,8 @@ from scipy.stats import expon
 import torch.optim as optim
 from typing import Union
 
-from deepscan.trainer import Trainer
-from deepscan.dataset import GeneExpressionDataset
+from scdeep.trainer import Trainer
+from scdeep.dataset import GeneExpressionDataset
 
 
 class SubModule(nn.Module):

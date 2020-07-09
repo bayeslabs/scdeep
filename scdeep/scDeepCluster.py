@@ -8,10 +8,10 @@ from sklearn.metrics import adjusted_rand_score, normalized_mutual_info_score
 from sklearn.cluster import KMeans
 
 
-from deepscan.trainer import Trainer
-from deepscan.dataset import GeneExpressionDataset
-from deepscan.network import ZINBAutoEncoder
-from deepscan.losses import zinb_loss
+from scdeep.trainer import Trainer
+from scdeep.dataset import GeneExpressionDataset
+from scdeep.network import ZINBAutoEncoder
+from scdeep.losses import zinb_loss
 
 
 def cluster_acc(y_true, y_pred):

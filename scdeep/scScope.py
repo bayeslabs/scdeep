@@ -6,9 +6,9 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 
-from deepscan.trainer import Trainer
-from deepscan.dataset import GeneExpressionDataset
-from deepscan.network import AutoEncoder, LinearActivation
+from scdeep.trainer import Trainer
+from scdeep.dataset import GeneExpressionDataset
+from scdeep.network import AutoEncoder, LinearActivation
 
 
 class scScope(AutoEncoder):

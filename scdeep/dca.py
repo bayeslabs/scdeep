@@ -4,10 +4,10 @@ from torch import nn
 import torch.optim as optim
 
 
-from deepscan.trainer import Trainer
-from deepscan.dataset import GeneExpressionDataset
-from deepscan.network import NBAutoEncoder, ZINBAutoEncoder
-from deepscan.losses import nb_loss, zinb_loss
+from scdeep.trainer import Trainer
+from scdeep.dataset import GeneExpressionDataset
+from scdeep.network import NBAutoEncoder, ZINBAutoEncoder
+from scdeep.losses import nb_loss, zinb_loss
 
 
 class DCATrainer(Trainer):
