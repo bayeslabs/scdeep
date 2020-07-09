@@ -13,7 +13,7 @@ setuptools.setup(
     description="single-cell analysis",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/bayeslabs/Deepscan",
+    url="https://github.com/bayeslabs/scdeep",
     packages=setuptools.find_packages(),
     license="MIT",
     classifiers=[
