@@ -1,6 +1,5 @@
 import torch
 
-
 from scdeep.utils import nan2inf, reduce_mean
 
 

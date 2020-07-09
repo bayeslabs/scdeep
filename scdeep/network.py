@@ -1,7 +1,6 @@
 import numpy as np
 import pandas as pd
 from typing import List, Union, DefaultDict, Dict
-import logging
 import torch
 from torch import nn
 

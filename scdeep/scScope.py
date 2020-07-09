@@ -5,7 +5,6 @@ from torch import nn
 import torch.optim as optim
 import torch.nn.functional as F
 
-
 from scdeep.trainer import Trainer
 from scdeep.dataset import GeneExpressionDataset
 from scdeep.network import AutoEncoder, LinearActivation
