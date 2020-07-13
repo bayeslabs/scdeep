@@ -1,7 +1,7 @@
 # SCDEEP
-One stop deep learning library for single cell analysis.
+One stop deep learning library for single cell analysis. Various deep learning based algorithms implemented to reduce noice in single cell data and examples given to use them
 
-Installation
+# Installation
 
 ```pip install scdeep```
 
